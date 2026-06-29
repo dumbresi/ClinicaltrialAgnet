@@ -55,8 +55,13 @@ def test_query_success(test_client, mock_query_service):
                 "data": [{"year": 2018, "trial_count": 42}],
             },
             "meta": {
+                "query_plan": {"group_by": "year"},
                 "filters": {"condition": "Breast Cancer", "group_by": "year"},
-                "record_count": 42,
+                "api_calls": 1,
+                "studies_processed": 42,
+                "records_after_filter": 42,
+                "aggregation": "trial_count_by_year",
+                "generated_at": "2026-01-01T00:00:00+00:00",
                 "source": "ClinicalTrials.gov",
                 "notes": [],
             },
@@ -71,7 +76,7 @@ def test_query_success(test_client, mock_query_service):
     assert response.status_code == 200
     body = response.json()
     assert body["visualization"]["type"] == "line_chart"
-    assert body["meta"]["record_count"] == 42
+    assert body["meta"]["studies_processed"] == 42
     mock_query_service.process_query.assert_awaited_once()
 
 
@@ -184,8 +189,13 @@ def test_query_with_explicit_filters(test_client, mock_query_service):
                 "data": [{"phase": "Phase 2", "trial_count": 10}],
             },
             "meta": {
+                "query_plan": {"group_by": "phase"},
                 "filters": {"drug": "Pembrolizumab", "group_by": "phase"},
-                "record_count": 10,
+                "api_calls": 1,
+                "studies_processed": 10,
+                "records_after_filter": 10,
+                "aggregation": "trial_count_by_phase",
+                "generated_at": "2026-01-01T00:00:00+00:00",
                 "source": "ClinicalTrials.gov",
                 "notes": [],
             },

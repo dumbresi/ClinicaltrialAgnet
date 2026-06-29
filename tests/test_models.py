@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
-from app.models import SearchIntent, UserQuery, VisualizationResponse
+from app.models import ExecutionPlan, UserQuery, VisualizationResponse
+from app.models.execution_plan import PlanEntity, PlanFilters
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +22,7 @@ def test_settings_loads_from_env(monkeypatch):
     assert settings.openai_api_key == "test-key"
     assert settings.clinical_trials_base_url_str == "https://clinicaltrials.gov/api/v2"
     assert settings.timeout_seconds == 30.0
+    assert settings.clinical_trials_max_pages is None
 
 
 def test_user_query_requires_query():
@@ -33,28 +35,24 @@ def test_user_query_validates_year_range():
         UserQuery(query="test query", start_year=2024, end_year=2020)
 
 
-def test_user_query_explicit_filters():
-    query = UserQuery(
-        query="Trials over time",
-        drug_name="Pembrolizumab",
-        start_year=2018,
-    )
-    assert query.explicit_filters() == {
-        "drug_name": "Pembrolizumab",
-        "start_year": 2018,
-    }
+def test_execution_plan_comparison_requires_two_entities():
+    with pytest.raises(ValidationError):
+        ExecutionPlan(
+            intent="comparison",
+            entities=[PlanEntity(type="drug", value="Pembrolizumab")],
+            comparison=True,
+            visualization="grouped_bar_chart",
+        )
 
 
-def test_search_intent_active_filters():
-    intent = SearchIntent(
-        condition="Breast Cancer",
-        status="RECRUITING",
-        metric="trial_count",
+def test_execution_plan_filters_active():
+    plan = ExecutionPlan(
+        filters=PlanFilters(condition="Breast Cancer", status="RECRUITING"),
         group_by="year",
-        visualization_hint="time_series",
+        visualization="line_chart",
     )
-    assert intent.active_filters()["condition"] == "Breast Cancer"
-    assert intent.active_filters()["status"] == "RECRUITING"
+    assert plan.filters.active_filters()["condition"] == "Breast Cancer"
+    assert plan.filters.active_filters()["status"] == "RECRUITING"
 
 
 def test_visualization_response_shape():
@@ -73,12 +71,17 @@ def test_visualization_response_shape():
                 ],
             },
             "meta": {
-                "filters": {"drug_name": "Pembrolizumab"},
-                "record_count": 110,
+                "query_plan": {"group_by": "phase"},
+                "filters": {"drug": "Pembrolizumab"},
+                "api_calls": 1,
+                "studies_processed": 110,
+                "records_after_filter": 110,
+                "aggregation": "trial_count_by_phase",
+                "generated_at": "2026-01-01T00:00:00+00:00",
                 "source": "ClinicalTrials.gov",
                 "notes": [],
             },
         }
     )
     assert response.visualization.type == "bar_chart"
-    assert response.meta.record_count == 110
+    assert response.meta.studies_processed == 110

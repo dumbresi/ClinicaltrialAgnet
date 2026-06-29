@@ -7,9 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field
 VisualizationType = Literal[
     "line_chart",
     "bar_chart",
+    "grouped_bar_chart",
+    "stacked_bar_chart",
     "pie_chart",
+    "scatter_plot",
+    "table",
     "map",
     "network_graph",
+    "kpi",
 ]
 
 
@@ -50,7 +55,7 @@ class VisualizationEncoding(BaseModel):
     )
     value: EncodingChannel | None = Field(
         default=None,
-        description="Value encoding for pie charts or edge weights.",
+        description="Value encoding for pie charts, KPIs, or edge weights.",
     )
     label: EncodingChannel | None = Field(
         default=None,
@@ -84,14 +89,36 @@ class MetaData(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    query_plan: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Execution plan produced by the query planner.",
+    )
     filters: dict[str, Any] = Field(
         default_factory=dict,
         description="Applied search and aggregation filters.",
     )
-    record_count: int = Field(
-        ...,
+    api_calls: int = Field(
+        default=1,
         ge=0,
-        description="Number of studies included in the aggregation.",
+        description="Number of ClinicalTrials.gov API requests executed.",
+    )
+    studies_processed: int = Field(
+        default=0,
+        ge=0,
+        description="Total studies fetched across all API requests.",
+    )
+    records_after_filter: int = Field(
+        default=0,
+        ge=0,
+        description="Studies included in the aggregation.",
+    )
+    aggregation: str = Field(
+        default="",
+        description="Aggregation pipeline identifier.",
+    )
+    generated_at: str = Field(
+        default="",
+        description="ISO-8601 timestamp when the response was generated.",
     )
     source: str = Field(
         default="ClinicalTrials.gov",

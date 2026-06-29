@@ -8,7 +8,7 @@ def test_build_app_services(settings: Settings):
     services = build_app_services(settings)
 
     assert services.settings is settings
-    assert services.llm_service is not None
+    assert services.query_planner_service is not None
     assert services.clinical_trials_service is not None
     assert services.aggregation_service is not None
     assert services.visualization_service is not None

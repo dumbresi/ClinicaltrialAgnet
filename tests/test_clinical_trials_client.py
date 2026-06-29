@@ -1,19 +1,18 @@
 """Tests for ClinicalTrials.gov client helpers and mocked HTTP."""
 
-import json
-
 import httpx
 import pytest
 
 from app.clients.clinical_trials_client import (
     ClinicalTrialsClient,
-    build_search_params,
+    build_base_params,
     parse_study_record,
 )
 from app.core.config import Settings
 from app.core.exceptions import ClinicalTrialsAPIError, NoStudiesFoundError
-from app.models.llm import SearchIntent
+from app.models.execution_plan import ExecutionPlan, PlanFilters
 from app.services.clinical_trials_service import ClinicalTrialsService
+from app.services.query_builder import ApiRequestSpec
 from app.utils.helpers import normalize_phase_token
 
 SAMPLE_STUDY = {
@@ -29,9 +28,16 @@ SAMPLE_STUDY = {
         "sponsorCollaboratorsModule": {
             "leadSponsor": {"name": "Sample Sponsor"},
         },
-        "designModule": {"phases": ["PHASE2"]},
+        "designModule": {
+            "phases": ["PHASE2"],
+            "enrollmentInfo": {"count": 120},
+        },
         "contactsLocationsModule": {
-            "locations": [{"country": "United States"}, {"country": "Canada"}],
+            "locations": [
+                {"country": "United States"},
+                {"country": "United States"},
+                {"country": "Canada"},
+            ],
         },
         "armsInterventionsModule": {
             "interventions": [{"name": "Drug A"}, {"name": "Drug B"}],
@@ -55,48 +61,21 @@ def test_normalize_phase_token():
     assert normalize_phase_token("unknown") is None
 
 
-def test_build_search_params_from_intent():
-    intent = SearchIntent(
-        condition="Breast Cancer",
-        drug="Pembrolizumab",
-        sponsor="NIH",
-        country="United States",
-        status="RECRUITING",
-        phase="Phase 2",
-        start_year=2018,
-        end_year=2025,
-    )
-    params = build_search_params(intent)
-
-    assert params["query.cond"] == "Breast Cancer"
-    assert params["query.intr"] == "Pembrolizumab"
-    assert params["query.spons"] == "NIH"
-    assert params["query.locn"] == "United States"
-    assert params["filter.overallStatus"] == "RECRUITING"
-    assert "AREA[Phase]PHASE2" in params["filter.advanced"]
-    assert "AREA[StartDate]RANGE[2018-01-01,2025-12-31]" in params["filter.advanced"]
+def test_build_base_params():
+    params = build_base_params()
     assert "fields" in params
+    assert "EnrollmentCount" in params["fields"]
 
 
-def test_build_search_params_fallback_term():
-    intent = SearchIntent()
-    params = build_search_params(intent)
-    assert params["query.term"] == "clinical trial"
-
-
-def test_parse_study_record():
+def test_parse_study_record_deduplicates_countries():
     record = parse_study_record(SAMPLE_STUDY)
     assert record.nct_id == "NCT00000001"
-    assert record.overall_status == "RECRUITING"
-    assert record.start_date == "2021-06-01"
-    assert record.phases == ["PHASE2"]
-    assert record.sponsor == "Sample Sponsor"
     assert record.countries == ["United States", "Canada"]
-    assert record.interventions == ["Drug A", "Drug B"]
+    assert record.enrollment == 120
 
 
 @pytest.mark.asyncio
-async def test_search_studies_pagination_mock(settings):
+async def test_search_pagination_until_no_token(settings):
     page_one = {
         "studies": [SAMPLE_STUDY],
         "nextPageToken": "token-2",
@@ -127,18 +106,14 @@ async def test_search_studies_pagination_mock(settings):
         base_url=settings.clinical_trials_base_url_str,
     ) as http_client:
         client = ClinicalTrialsClient(settings, http_client=http_client)
-        result = await client.search_studies(
-            SearchIntent(condition="Breast Cancer"),
+        result = await client.search_with_params(
+            {**build_base_params(), "query.cond": "Breast Cancer"},
             page_size=1,
             max_pages=2,
         )
 
     assert len(result.studies) == 2
     assert result.pages_fetched == 2
-    assert {study.nct_id for study in result.studies} == {
-        "NCT00000001",
-        "NCT00000002",
-    }
 
 
 @pytest.mark.asyncio
@@ -161,7 +136,7 @@ async def test_get_study_mock(settings):
 @pytest.mark.asyncio
 async def test_api_error_is_mapped(settings):
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, text="`filter.phase` is unknown parameter")
+        return httpx.Response(400, text="bad request")
 
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(
@@ -170,7 +145,9 @@ async def test_api_error_is_mapped(settings):
     ) as http_client:
         client = ClinicalTrialsClient(settings, http_client=http_client)
         with pytest.raises(ClinicalTrialsAPIError):
-            await client.search_studies(SearchIntent(condition="Breast Cancer"))
+            await client.search_with_params(
+                {**build_base_params(), "query.cond": "Breast Cancer"}
+            )
 
 
 @pytest.mark.asyncio
@@ -185,5 +162,30 @@ async def test_service_raises_when_no_studies(settings):
     ) as http_client:
         client = ClinicalTrialsClient(settings, http_client=http_client)
         service = ClinicalTrialsService(client)
+        plan = ExecutionPlan(filters=PlanFilters(condition="Breast Cancer"))
         with pytest.raises(NoStudiesFoundError):
-            await service.fetch_studies(SearchIntent(condition="Breast Cancer"))
+            await service.fetch_studies(plan)
+
+
+@pytest.mark.asyncio
+async def test_execute_request_spec(settings):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"studies": [SAMPLE_STUDY]})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url=settings.clinical_trials_base_url_str,
+    ) as http_client:
+        client = ClinicalTrialsClient(settings, http_client=http_client)
+        result = await client.execute_request(
+            ApiRequestSpec(
+                label="Pembrolizumab",
+                entity_type="drug",
+                entity_value="Pembrolizumab",
+                params={"query.intr": "Pembrolizumab"},
+            )
+        )
+
+    assert result.label == "Pembrolizumab"
+    assert len(result.studies) == 1

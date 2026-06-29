@@ -4,27 +4,27 @@ import logging
 import time
 from typing import Protocol
 
-from openai import APITimeoutError, AsyncOpenAI
+from openai import APITimeoutError, AsyncOpenAI, BadRequestError
 from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.core.exceptions import InvalidOpenAIResponseError, OpenAITimeoutError
 from app.core.logging import get_logger, log_context
-from app.models.llm import SearchIntent
+from app.models.execution_plan import ExecutionPlan
 
 logger = get_logger(__name__)
 
 
 class OpenAIClientProtocol(Protocol):
-    """Protocol for OpenAI intent parsing (enables test doubles)."""
+    """Protocol for OpenAI execution plan parsing (enables test doubles)."""
 
-    async def parse_search_intent(
+    async def parse_execution_plan(
         self,
         *,
         instructions: str,
         user_message: str,
-    ) -> tuple[SearchIntent, float]:
-        """Parse a user message into structured search intent."""
+    ) -> tuple[ExecutionPlan, float]:
+        """Parse a user message into a structured execution plan."""
         ...
 
 
@@ -39,17 +39,17 @@ class OpenAIClient:
         )
         self._model = settings.openai_model
 
-    async def parse_search_intent(
+    async def parse_execution_plan(
         self,
         *,
         instructions: str,
         user_message: str,
-    ) -> tuple[SearchIntent, float]:
-        """Call the Responses API and return validated search intent plus latency."""
+    ) -> tuple[ExecutionPlan, float]:
+        """Call the Responses API and return a validated execution plan plus latency."""
         started = time.perf_counter()
         log_context(
             logger,
-            "OpenAI intent parse request started",
+            "OpenAI execution plan request started",
             model=self._model,
         )
 
@@ -58,22 +58,34 @@ class OpenAIClient:
                 model=self._model,
                 instructions=instructions,
                 input=user_message,
-                text_format=SearchIntent,
+                text_format=ExecutionPlan,
             )
         except APITimeoutError as exc:
             latency_ms = (time.perf_counter() - started) * 1000
             log_context(
                 logger,
-                "OpenAI intent parse timed out",
+                "OpenAI execution plan request timed out",
                 level=logging.ERROR,
                 latency_ms=round(latency_ms, 2),
             )
             raise OpenAITimeoutError("OpenAI request timed out") from exc
+        except BadRequestError as exc:
+            latency_ms = (time.perf_counter() - started) * 1000
+            log_context(
+                logger,
+                "OpenAI execution plan request rejected",
+                level=logging.ERROR,
+                latency_ms=round(latency_ms, 2),
+                error=str(exc),
+            )
+            raise InvalidOpenAIResponseError(
+                "OpenAI rejected the execution plan schema or request"
+            ) from exc
         except Exception as exc:
             latency_ms = (time.perf_counter() - started) * 1000
             log_context(
                 logger,
-                "OpenAI intent parse failed",
+                "OpenAI execution plan request failed",
                 level=logging.ERROR,
                 latency_ms=round(latency_ms, 2),
                 error=str(exc),
@@ -93,7 +105,7 @@ class OpenAIClient:
             raise InvalidOpenAIResponseError("OpenAI returned no structured output")
 
         try:
-            intent = SearchIntent.model_validate(parsed)
+            plan = ExecutionPlan.model_validate(parsed)
         except ValidationError as exc:
             log_context(
                 logger,
@@ -102,14 +114,14 @@ class OpenAIClient:
                 latency_ms=round(latency_ms, 2),
             )
             raise InvalidOpenAIResponseError(
-                "OpenAI returned invalid search intent JSON"
+                "OpenAI returned invalid execution plan JSON"
             ) from exc
 
         log_context(
             logger,
-            "OpenAI intent parse completed",
+            "OpenAI execution plan completed",
             latency_ms=round(latency_ms, 2),
-            group_by=intent.group_by,
-            metric=intent.metric,
+            intent=plan.intent,
+            group_by=plan.group_by,
         )
-        return intent, latency_ms
+        return plan, latency_ms

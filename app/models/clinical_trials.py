@@ -22,6 +22,10 @@ class StudyRecord(BaseModel):
         default_factory=list,
         description="Intervention names associated with the study.",
     )
+    enrollment: int | None = Field(
+        default=None,
+        description="Target or actual enrollment count.",
+    )
 
 
 class StudiesSearchResult(BaseModel):
@@ -33,3 +37,20 @@ class StudiesSearchResult(BaseModel):
     pages_fetched: int = Field(..., ge=0)
     api_params: dict[str, str | int] = Field(default_factory=dict)
     latency_ms: float = Field(..., ge=0)
+    label: str | None = Field(
+        default=None,
+        description="Series label when part of a multi-request fetch.",
+    )
+    entity_type: str | None = None
+    entity_value: str | None = None
+
+
+class MultiSearchResult(BaseModel):
+    """Combined result from multiple API requests."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    results: list[StudiesSearchResult] = Field(default_factory=list)
+    api_calls: int = Field(..., ge=0)
+    studies_processed: int = Field(..., ge=0)
+    total_latency_ms: float = Field(..., ge=0)

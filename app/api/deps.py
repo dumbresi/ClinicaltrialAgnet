@@ -11,7 +11,7 @@ from app.clients.openai_client import OpenAIClient
 from app.core.config import Settings, get_settings
 from app.services.aggregation_service import AggregationService
 from app.services.clinical_trials_service import ClinicalTrialsService
-from app.services.llm_service import LLMService
+from app.services.query_planner_service import QueryPlannerService
 from app.services.query_service import QueryService
 from app.services.visualization_service import VisualizationService
 from app.utils.helpers import load_prompt
@@ -25,7 +25,7 @@ class AppServices:
     http_client: httpx.AsyncClient
     openai_client: OpenAIClient
     clinical_trials_client: ClinicalTrialsClient
-    llm_service: LLMService
+    query_planner_service: QueryPlannerService
     clinical_trials_service: ClinicalTrialsService
     aggregation_service: AggregationService
     visualization_service: VisualizationService
@@ -44,15 +44,15 @@ def build_app_services(settings: Settings) -> AppServices:
         settings,
         http_client=http_client,
     )
-    llm_service = LLMService(
+    query_planner_service = QueryPlannerService(
         openai_client=openai_client,
-        instructions=load_prompt("query_parser.txt"),
+        instructions=load_prompt("query_planner.txt"),
     )
     clinical_trials_service = ClinicalTrialsService(clinical_trials_client)
     aggregation_service = AggregationService()
     visualization_service = VisualizationService()
     query_service = QueryService(
-        llm_service=llm_service,
+        query_planner_service=query_planner_service,
         clinical_trials_service=clinical_trials_service,
         aggregation_service=aggregation_service,
         visualization_service=visualization_service,
@@ -63,7 +63,7 @@ def build_app_services(settings: Settings) -> AppServices:
         http_client=http_client,
         openai_client=openai_client,
         clinical_trials_client=clinical_trials_client,
-        llm_service=llm_service,
+        query_planner_service=query_planner_service,
         clinical_trials_service=clinical_trials_service,
         aggregation_service=aggregation_service,
         visualization_service=visualization_service,

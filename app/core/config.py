@@ -27,7 +27,7 @@ class Settings(BaseSettings):
         description="HTTP client timeout in seconds",
     )
     openai_model: str = Field(
-        default="gpt-4o",
+        default="gpt-4o-mini",
         description="OpenAI model used for intent extraction",
     )
     log_level: str = Field(default="INFO", description="Application log level")
@@ -37,10 +37,10 @@ class Settings(BaseSettings):
         le=1000,
         description="Page size for ClinicalTrials.gov study searches",
     )
-    clinical_trials_max_pages: int = Field(
-        default=50,
+    clinical_trials_max_pages: int | None = Field(
+        default=None,
         ge=1,
-        description="Maximum number of pages to fetch per search",
+        description="Optional safety cap on pages per search; None fetches all pages.",
     )
 
     @property

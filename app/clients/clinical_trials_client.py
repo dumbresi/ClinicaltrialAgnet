@@ -15,8 +15,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger, log_context
 from app.models.clinical_trials import StudiesSearchResult, StudyRecord
-from app.models.llm import SearchIntent
-from app.utils.helpers import normalize_phase_token
+from app.services.query_builder import ApiRequestSpec
 
 logger = get_logger(__name__)
 
@@ -30,20 +29,31 @@ DEFAULT_STUDY_FIELDS = [
     "LeadSponsorName",
     "LocationCountry",
     "InterventionName",
+    "EnrollmentCount",
 ]
 
 
 class ClinicalTrialsClientProtocol(Protocol):
     """Protocol for ClinicalTrials.gov client implementations."""
 
-    async def search_studies(
+    async def search_with_params(
         self,
-        intent: SearchIntent,
+        params: dict[str, str | int],
         *,
         page_size: int | None = None,
         max_pages: int | None = None,
     ) -> StudiesSearchResult:
-        """Search studies matching structured intent."""
+        """Search studies using raw API parameters."""
+        ...
+
+    async def execute_request(
+        self,
+        request: ApiRequestSpec,
+        *,
+        page_size: int | None = None,
+        max_pages: int | None = None,
+    ) -> StudiesSearchResult:
+        """Execute a single API request spec."""
         ...
 
     async def get_study(self, nct_id: str) -> StudyRecord:
@@ -55,58 +65,12 @@ class ClinicalTrialsClientProtocol(Protocol):
         ...
 
 
-def build_search_params(intent: SearchIntent) -> dict[str, str | int]:
-    """Translate search intent into ClinicalTrials.gov v2 query parameters."""
-    params: dict[str, str | int] = {
+def build_base_params() -> dict[str, str | int]:
+    """Return base API parameters including requested fields."""
+    return {
         "format": "json",
         "fields": ",".join(DEFAULT_STUDY_FIELDS),
     }
-
-    if intent.condition:
-        params["query.cond"] = intent.condition
-    if intent.drug:
-        params["query.intr"] = intent.drug
-    if intent.sponsor:
-        params["query.spons"] = intent.sponsor
-    if intent.country:
-        params["query.locn"] = intent.country
-
-    if intent.status:
-        params["filter.overallStatus"] = intent.status
-
-    advanced_filters: list[str] = []
-
-    if intent.phase:
-        phase_token = normalize_phase_token(intent.phase)
-        if phase_token:
-            advanced_filters.append(f"AREA[Phase]{phase_token}")
-
-    if intent.start_year is not None or intent.end_year is not None:
-        start = f"{intent.start_year:04d}-01-01" if intent.start_year else "MIN"
-        end = f"{intent.end_year:04d}-12-31" if intent.end_year else "MAX"
-        advanced_filters.append(f"AREA[StartDate]RANGE[{start},{end}]")
-
-    if advanced_filters:
-        params["filter.advanced"] = " AND ".join(advanced_filters)
-
-    if not _has_search_criteria(params):
-        params["query.term"] = "clinical trial"
-
-    return params
-
-
-def _has_search_criteria(params: dict[str, str | int]) -> bool:
-    """Return True when at least one query/filter parameter is present."""
-    query_keys = (
-        "query.cond",
-        "query.intr",
-        "query.spons",
-        "query.locn",
-        "query.term",
-        "filter.overallStatus",
-        "filter.advanced",
-    )
-    return any(key in params for key in query_keys)
 
 
 def parse_study_record(study: dict[str, Any]) -> StudyRecord:
@@ -118,20 +82,25 @@ def parse_study_record(study: dict[str, Any]) -> StudyRecord:
     design_module = section.get("designModule") or {}
     locations_module = section.get("contactsLocationsModule") or {}
     interventions_module = section.get("armsInterventionsModule") or {}
+    enrollment_module = design_module.get("enrollmentInfo") or {}
 
     start_date_struct = status_module.get("startDateStruct") or {}
     lead_sponsor = sponsor_module.get("leadSponsor") or {}
 
-    countries = [
+    countries = _unique_strings(
         location.get("country")
         for location in locations_module.get("locations") or []
         if location.get("country")
-    ]
-    interventions = [
+    )
+    interventions = _unique_strings(
         intervention.get("name")
         for intervention in interventions_module.get("interventions") or []
         if intervention.get("name")
-    ]
+    )
+
+    enrollment = enrollment_module.get("count")
+    if isinstance(enrollment, str) and enrollment.isdigit():
+        enrollment = int(enrollment)
 
     return StudyRecord(
         nct_id=identification.get("nctId", ""),
@@ -142,6 +111,7 @@ def parse_study_record(study: dict[str, Any]) -> StudyRecord:
         sponsor=lead_sponsor.get("name"),
         countries=countries,
         interventions=interventions,
+        enrollment=enrollment if isinstance(enrollment, int) else None,
     )
 
 
@@ -162,23 +132,49 @@ class ClinicalTrialsClient:
             headers={"Accept": "application/json"},
         )
 
-    async def search_studies(
+    async def execute_request(
         self,
-        intent: SearchIntent,
+        request: ApiRequestSpec,
         *,
         page_size: int | None = None,
         max_pages: int | None = None,
     ) -> StudiesSearchResult:
-        """Search studies with pagination support."""
-        params = build_search_params(intent)
+        """Execute a query builder request spec."""
+        params = {**build_base_params(), **request.params}
+        result = await self.search_with_params(
+            params,
+            page_size=page_size,
+            max_pages=max_pages,
+        )
+        return result.model_copy(
+            update={
+                "label": request.label,
+                "entity_type": request.entity_type,
+                "entity_value": request.entity_value,
+            }
+        )
+
+    async def search_with_params(
+        self,
+        params: dict[str, str | int],
+        *,
+        page_size: int | None = None,
+        max_pages: int | None = None,
+    ) -> StudiesSearchResult:
+        """Search studies with automatic pagination until no nextPageToken."""
         resolved_page_size = page_size or self._settings.clinical_trials_page_size
-        resolved_max_pages = max_pages or self._settings.clinical_trials_max_pages
-        params["pageSize"] = resolved_page_size
+        resolved_max_pages = (
+            max_pages
+            if max_pages is not None
+            else self._settings.clinical_trials_max_pages
+        )
+        request_params = dict(params)
+        request_params["pageSize"] = resolved_page_size
 
         log_context(
             logger,
             "ClinicalTrials.gov search started",
-            api_params=params,
+            api_params=request_params,
         )
 
         started = time.perf_counter()
@@ -186,12 +182,15 @@ class ClinicalTrialsClient:
         pages_fetched = 0
         page_token: str | None = None
 
-        while pages_fetched < resolved_max_pages:
-            request_params = dict(params)
-            if page_token:
-                request_params["pageToken"] = page_token
+        while True:
+            if resolved_max_pages is not None and pages_fetched >= resolved_max_pages:
+                break
 
-            payload = await self._get_json(STUDIES_PATH, params=request_params)
+            page_params = dict(request_params)
+            if page_token:
+                page_params["pageToken"] = page_token
+
+            payload = await self._get_json(STUDIES_PATH, params=page_params)
             pages_fetched += 1
 
             for raw_study in payload.get("studies") or []:
@@ -215,7 +214,7 @@ class ClinicalTrialsClient:
         return StudiesSearchResult(
             studies=studies,
             pages_fetched=pages_fetched,
-            api_params=params,
+            api_params=request_params,
             latency_ms=latency_ms,
         )
 
@@ -301,3 +300,13 @@ class ClinicalTrialsClient:
             raise ClinicalTrialsAPIError("ClinicalTrials.gov returned unexpected payload")
 
         return payload
+
+
+def _unique_strings(values: Any) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result

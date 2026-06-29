@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.llm import GroupBy, Metric
+Metric = Literal["trial_count", "proportion", "enrollment_sum", "enrollment_average"]
 
 
 class AggregatedData(BaseModel):
@@ -12,7 +12,7 @@ class AggregatedData(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    group_by: GroupBy = Field(..., description="Dimension used for aggregation.")
+    group_by: str = Field(..., description="Dimension(s) used for aggregation.")
     metric: Metric = Field(..., description="Metric applied to grouped rows.")
     rows: list[dict[str, Any]] = Field(
         default_factory=list,
@@ -26,6 +26,14 @@ class AggregatedData(BaseModel):
     notes: list[str] = Field(
         default_factory=list,
         description="Aggregation assumptions or caveats.",
+    )
+    series_field: str | None = Field(
+        default=None,
+        description="Comparison series field when comparison=true.",
+    )
+    comparison: bool = Field(
+        default=False,
+        description="Whether rows include comparison series.",
     )
 
 

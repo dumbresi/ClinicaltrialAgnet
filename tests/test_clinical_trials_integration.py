@@ -2,10 +2,10 @@
 
 import pytest
 
-from app.clients.clinical_trials_client import ClinicalTrialsClient
+from app.clients.clinical_trials_client import ClinicalTrialsClient, build_base_params
 from app.core.config import Settings
 from app.core.exceptions import NoStudiesFoundError
-from app.models.llm import SearchIntent
+from app.models.execution_plan import ExecutionPlan, PlanFilters
 from app.services.clinical_trials_service import ClinicalTrialsService
 
 pytestmark = pytest.mark.integration
@@ -29,8 +29,12 @@ async def client(settings):
 
 @pytest.mark.asyncio
 async def test_live_search_breast_cancer(client):
-    intent = SearchIntent(condition="Breast Cancer", status="RECRUITING")
-    result = await client.search_studies(intent, page_size=5, max_pages=1)
+    params = {
+        **build_base_params(),
+        "query.cond": "Breast Cancer",
+        "filter.overallStatus": "RECRUITING",
+    }
+    result = await client.search_with_params(params, page_size=5, max_pages=1)
 
     assert result.pages_fetched == 1
     assert len(result.studies) > 0
@@ -41,8 +45,8 @@ async def test_live_search_breast_cancer(client):
 
 @pytest.mark.asyncio
 async def test_live_get_study(client):
-    search = await client.search_studies(
-        SearchIntent(condition="Breast Cancer"),
+    search = await client.search_with_params(
+        {**build_base_params(), "query.cond": "Breast Cancer"},
         page_size=1,
         max_pages=1,
     )
@@ -56,8 +60,11 @@ async def test_live_get_study(client):
 
 @pytest.mark.asyncio
 async def test_live_pagination(client):
-    intent = SearchIntent(condition="Breast Cancer")
-    result = await client.search_studies(intent, page_size=2, max_pages=2)
+    result = await client.search_with_params(
+        {**build_base_params(), "query.cond": "Breast Cancer"},
+        page_size=2,
+        max_pages=2,
+    )
 
     assert result.pages_fetched == 2
     assert len(result.studies) >= 3
@@ -67,15 +74,14 @@ async def test_live_pagination(client):
 @pytest.mark.asyncio
 async def test_live_service_fetch_studies(client):
     service = ClinicalTrialsService(client)
-    result = await service.fetch_studies(
-        SearchIntent(
-            condition="Breast Cancer",
-            drug="Pembrolizumab",
-            group_by="year",
-        )
+    plan = ExecutionPlan(
+        filters=PlanFilters(condition="Breast Cancer", drug="Pembrolizumab"),
+        group_by="year",
+        visualization="line_chart",
     )
+    result = await service.fetch_studies(plan)
 
-    assert len(result.studies) > 0
+    assert result.studies_processed > 0
 
 
 @pytest.mark.asyncio
@@ -83,5 +89,5 @@ async def test_live_no_studies_found(client):
     service = ClinicalTrialsService(client)
     with pytest.raises(NoStudiesFoundError):
         await service.fetch_studies(
-            SearchIntent(condition="ThisConditionDoesNotExist99999")
+            ExecutionPlan(filters=PlanFilters(condition="ThisConditionDoesNotExist99999"))
         )

@@ -4,8 +4,13 @@ import json
 import re
 from pathlib import Path
 
-from app.models.llm import SearchIntent
+from typing import TYPE_CHECKING
+
 from app.models.request import UserQuery
+
+if TYPE_CHECKING:
+    from app.models.execution_plan import ExecutionPlan
+    from app.models.llm import SearchIntent
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -40,8 +45,8 @@ def load_prompt(filename: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def build_intent_user_message(user_query: UserQuery) -> str:
-    """Build the JSON payload sent to the intent parser."""
+def build_planner_user_message(user_query: UserQuery) -> str:
+    """Build the JSON payload sent to the query planner."""
     payload: dict[str, object] = {"query": user_query.query}
     explicit_filters = user_query.explicit_filters()
     if explicit_filters:
@@ -49,8 +54,44 @@ def build_intent_user_message(user_query: UserQuery) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
-def merge_explicit_filters(intent: SearchIntent, user_query: UserQuery) -> SearchIntent:
-    """Apply user-provided structured filters, overriding LLM output."""
+def build_intent_user_message(user_query: UserQuery) -> str:
+    """Backward-compatible alias for the planner user message."""
+    return build_planner_user_message(user_query)
+
+
+def merge_explicit_filters_into_plan(
+    plan: "ExecutionPlan",
+    user_query: UserQuery,
+) -> "ExecutionPlan":
+    """Apply user-provided structured filters into the execution plan."""
+    from app.models.execution_plan import ExecutionPlan
+
+    filter_updates: dict[str, object] = {}
+
+    if user_query.drug_name is not None:
+        filter_updates["drug"] = user_query.drug_name
+    if user_query.condition is not None:
+        filter_updates["condition"] = user_query.condition
+    if user_query.trial_phase is not None:
+        filter_updates["phase"] = user_query.trial_phase
+    if user_query.sponsor is not None:
+        filter_updates["sponsor"] = user_query.sponsor
+    if user_query.country is not None:
+        filter_updates["country"] = user_query.country
+    if user_query.start_year is not None:
+        filter_updates["start_year"] = user_query.start_year
+    if user_query.end_year is not None:
+        filter_updates["end_year"] = user_query.end_year
+
+    if not filter_updates:
+        return plan
+
+    merged_filters = plan.filters.model_copy(update=filter_updates)
+    return plan.model_copy(update={"filters": merged_filters})
+
+
+def merge_explicit_filters(intent: "SearchIntent", user_query: UserQuery) -> "SearchIntent":
+    """Backward-compatible filter merge for legacy SearchIntent."""
     updates: dict[str, object] = {}
 
     if user_query.drug_name is not None:
@@ -106,6 +147,16 @@ def format_phase_label(phase: str) -> str:
     if token in PHASE_LABELS:
         return PHASE_LABELS[token]
     return phase.strip() or "Not Specified"
+
+
+NOT_SPECIFIED_LABEL = "Not Specified"
+
+
+def format_status_label(status: str | None) -> str:
+    """Convert API status codes to readable labels."""
+    if not status:
+        return NOT_SPECIFIED_LABEL
+    return status.replace("_", " ").title()
 
 
 def extract_start_year(start_date: str | None) -> int | None:
