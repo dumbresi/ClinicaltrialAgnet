@@ -69,6 +69,18 @@ class OpenAIClient:
                 latency_ms=round(latency_ms, 2),
             )
             raise OpenAITimeoutError("OpenAI request timed out") from exc
+        except ValidationError as exc:
+            latency_ms = (time.perf_counter() - started) * 1000
+            log_context(
+                logger,
+                "OpenAI execution plan request failed validation",
+                level=logging.ERROR,
+                latency_ms=round(latency_ms, 2),
+                error=str(exc),
+            )
+            raise InvalidOpenAIResponseError(
+                "OpenAI returned invalid execution plan JSON"
+            ) from exc
         except BadRequestError as exc:
             latency_ms = (time.perf_counter() - started) * 1000
             log_context(

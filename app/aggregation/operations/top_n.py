@@ -31,6 +31,9 @@ class TopNOperation:
         if not label_field:
             label_field = _infer_label_field(rows[0], value_field)
 
+        if include_other and _label_field_count(rows[0], value_field) > 1:
+            include_other = False
+
         sorted_rows = sorted(
             rows,
             key=lambda row: row.get(value_field, 0) or 0,
@@ -53,3 +56,7 @@ def _infer_label_field(row: dict[str, Any], value_field: str) -> str:
         if key != value_field:
             return key
     return "category"
+
+
+def _label_field_count(row: dict[str, Any], value_field: str) -> int:
+    return sum(1 for key in row if key != value_field)

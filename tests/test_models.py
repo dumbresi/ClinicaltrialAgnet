@@ -45,6 +45,31 @@ def test_execution_plan_comparison_requires_two_entities():
         )
 
 
+def test_execution_plan_normalizes_mixed_comparison_entities():
+    plan = ExecutionPlan.model_validate(
+        {
+            "intent": "comparison",
+            "comparison": True,
+            "visualization": "grouped_bar_chart",
+            "entities": [
+                {"type": "drug", "value": "Pembrolizumab"},
+                {"type": "country", "value": "United States"},
+                {"type": "country", "value": "Europe"},
+            ],
+            "filters": {"phase": "Phase 3", "status": "RECRUITING"},
+        }
+    )
+
+    assert [entity.value for entity in plan.entities] == [
+        "United States",
+        "Europe",
+    ]
+    assert all(entity.type == "country" for entity in plan.entities)
+    assert plan.filters.drug == "Pembrolizumab"
+    assert plan.filters.phase == "Phase 3"
+    assert plan.filters.status == "RECRUITING"
+
+
 def test_execution_plan_filters_active():
     plan = ExecutionPlan(
         filters=PlanFilters(condition="Breast Cancer", status="RECRUITING"),

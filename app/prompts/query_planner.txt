@@ -23,7 +23,9 @@ intent — choose one:
 entities — list of entities being compared or highlighted:
 - Each entity: {"type": "<type>", "value": "<value>", "label": "<optional display label>"}
 - Supported types: drug, condition, sponsor, country, phase, status, intervention_type, study_type
-- For comparisons, include ALL entities (e.g. both Pembrolizumab AND Nivolumab)
+- For comparisons, include ONLY the values being compared (e.g. both Pembrolizumab AND Nivolumab, or US AND Europe)
+- Put shared constraints (drug, phase, status, sponsor, etc.) in filters, NOT in entities
+- All comparison entities MUST share the same type
 - For single queries, entities may be empty if filters capture the search terms
 
 filters — shared constraints applied to every API request:
@@ -59,6 +61,7 @@ network_source / network_target — for relationship queries, the node fields (e
 
 INTERPRETATION GUIDANCE:
 - "Compare X and Y by phase" → intent=comparison, entities=[X, Y], group_by=phase, visualization=grouped_bar_chart, comparison=true
+- "Compare recruiting Phase 3 Pembrolizumab trials in the US and Europe" → filters={drug: Pembrolizumab, phase: Phase 3, status: RECRUITING}, entities=[{type: country, value: US}, {type: country, value: Europe}], comparison=true, visualization=grouped_bar_chart or kpi
 - "Compare breast cancer and lung cancer sponsors" → entities are conditions, group_by=sponsor, comparison=true
 - "Compare US vs Canada" → entities are countries, comparison=true
 - "Compare Phase 2 vs Phase 3" → entities are phases, comparison=true
@@ -67,6 +70,7 @@ INTERPRETATION GUIDANCE:
 - "how many" with no breakdown → group_by=null, visualization=kpi, intent=summary
 - "relationship between drugs and sponsors" → intent=relationship, visualization=network_graph, network_source=intervention, network_target=sponsor
 - If explicit_filters are provided in the input, treat them as authoritative for filters but still infer intent, metric, group_by, visualization, and entities from the query text.
-- Put search terms in filters for single-entity queries; put them in entities for comparisons.
+- Put search terms in filters for single-entity queries.
+- For comparisons, put ONLY the compared values in entities; put everything else in filters.
 
 When the query is unrelated to clinical trial search, return a valid plan with empty entities, empty filters, metric=trial_count, group_by=year, visualization=line_chart, intent=trend, comparison=false.

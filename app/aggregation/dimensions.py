@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from app.aggregation.context import TaggedStudy
 from app.models.execution_plan import GroupByDimension
-from app.utils.helpers import extract_start_year, format_phase_label, format_status_label
+from app.utils.helpers import (
+    extract_start_year,
+    format_phase_label,
+    format_sponsor_label,
+    format_status_label,
+    normalize_display_label,
+)
 
 NOT_SPECIFIED_LABEL = "Not Specified"
 COUNT_FIELD = "trial_count"
@@ -38,10 +44,13 @@ def extract_dimension_values(
         countries = study.countries or []
         if not countries:
             return [("country", NOT_SPECIFIED_LABEL)]
-        return [("country", country) for country in _unique_preserve(countries)]
+        return [
+            ("country", normalize_display_label(country))
+            for country in _unique_preserve(countries)
+        ]
 
     if dimension == "sponsor":
-        return [("sponsor", study.sponsor or NOT_SPECIFIED_LABEL)]
+        return [("sponsor", format_sponsor_label(study.sponsor or NOT_SPECIFIED_LABEL))]
 
     if dimension == "status":
         return [("status", format_status_label(study.overall_status))]
@@ -51,7 +60,7 @@ def extract_dimension_values(
         if not interventions:
             return [("intervention", NOT_SPECIFIED_LABEL)]
         return [
-            ("intervention", intervention)
+            ("intervention", normalize_display_label(intervention))
             for intervention in _unique_preserve(interventions)
         ]
 

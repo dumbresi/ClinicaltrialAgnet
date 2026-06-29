@@ -141,12 +141,23 @@ PHASE_LABELS = {
 }
 
 
+def normalize_display_label(value: str) -> str:
+    """Normalize a display label by trimming and collapsing whitespace."""
+    return re.sub(r"\s+", " ", value.strip())
+
+
 def format_phase_label(phase: str) -> str:
     """Convert API phase tokens to human-readable labels."""
-    token = phase.strip().upper().replace(" ", "_")
-    if token in PHASE_LABELS:
+    token = normalize_phase_token(phase)
+    if token and token in PHASE_LABELS:
         return PHASE_LABELS[token]
-    return phase.strip() or "Not Specified"
+    stripped = normalize_display_label(phase)
+    return stripped or NOT_SPECIFIED_LABEL
+
+
+def format_sponsor_label(sponsor: str) -> str:
+    """Normalize sponsor names for consistent chart labels."""
+    return normalize_display_label(sponsor) or NOT_SPECIFIED_LABEL
 
 
 NOT_SPECIFIED_LABEL = "Not Specified"

@@ -175,3 +175,22 @@ def test_aggregation_service_proportion(studies):
 
     assert all("proportion" in row for row in result.rows)
     assert round(sum(row["proportion"] for row in result.rows), 4) == 1.0
+
+
+def test_network_graph_aggregation_excludes_other_bucket(studies):
+    service = AggregationService()
+    tagged = [TaggedStudy(study=study) for study in studies]
+    plan = ExecutionPlan(
+        intent="relationship",
+        filters=PlanFilters(condition="lung cancer"),
+        metric="trial_count",
+        visualization="network_graph",
+        network_source="phase",
+        network_target="sponsor",
+    )
+
+    result = service.aggregate(tagged, plan, options=AggregationOptions(top_n=2))
+
+    assert len(result.rows) == 2
+    assert all("source" in row and "target" in row for row in result.rows)
+    assert not any(row.get("source") == "Other" or row.get("target") == "Other" for row in result.rows)

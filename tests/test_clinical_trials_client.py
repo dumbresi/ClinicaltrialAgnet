@@ -13,7 +13,7 @@ from app.core.exceptions import ClinicalTrialsAPIError, NoStudiesFoundError
 from app.models.execution_plan import ExecutionPlan, PlanFilters
 from app.services.clinical_trials_service import ClinicalTrialsService
 from app.services.query_builder import ApiRequestSpec
-from app.utils.helpers import normalize_phase_token
+from app.utils.helpers import format_phase_label, normalize_phase_token
 
 SAMPLE_STUDY = {
     "protocolSection": {
@@ -59,6 +59,13 @@ def test_normalize_phase_token():
     assert normalize_phase_token("Phase 2") == "PHASE2"
     assert normalize_phase_token("phase3") == "PHASE3"
     assert normalize_phase_token("unknown") is None
+
+
+def test_format_phase_label():
+    assert format_phase_label("PHASE1") == "Phase 1"
+    assert format_phase_label("PHASE 1") == "Phase 1"
+    assert format_phase_label("Phase 2") == "Phase 2"
+    assert format_phase_label("") == "Not Specified"
 
 
 def test_build_base_params():

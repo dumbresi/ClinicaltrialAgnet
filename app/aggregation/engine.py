@@ -87,7 +87,13 @@ class AggregationEngine:
                     },
                 ),
                 AggregationStep(operation="sort", params={"field": COUNT_FIELD, "descending": True}),
-                AggregationStep(operation="top_n", params={"n": options.top_n}),
+                AggregationStep(
+                    operation="top_n",
+                    params={
+                        "n": options.top_n,
+                        "include_other_bucket": False,
+                    },
+                ),
             ]
 
         if plan.group_by is None and not plan.comparison:

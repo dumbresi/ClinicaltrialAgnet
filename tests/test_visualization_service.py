@@ -150,3 +150,34 @@ def test_build_spec_empty_rows_raises(service):
 
     with pytest.raises(InvalidVisualizationError):
         service.build_spec(aggregated, plan)
+
+
+def test_build_spec_network_graph(service):
+    aggregated = AggregatedData(
+        group_by="none",
+        metric="trial_count",
+        rows=[
+            {"source": "Phase 2", "target": "AstraZeneca", "trial_count": 57},
+            {"source": "Phase 1", "target": "Pfizer", "trial_count": 64},
+        ],
+        record_count=121,
+    )
+    plan = ExecutionPlan(
+        intent="relationship",
+        filters=PlanFilters(condition="lung cancer"),
+        metric="trial_count",
+        visualization="network_graph",
+        network_source="phase",
+        network_target="sponsor",
+    )
+
+    spec = service.build_spec(aggregated, plan)
+
+    assert spec.type == "network_graph"
+    assert spec.title == "Lung Cancer Trials: Phase & Sponsor"
+    assert spec.encoding.source is not None
+    assert spec.encoding.source.label == "Phase"
+    assert spec.encoding.target is not None
+    assert spec.encoding.target.label == "Sponsor"
+    assert spec.encoding.value is not None
+    assert spec.encoding.value.label == "Trial Count"

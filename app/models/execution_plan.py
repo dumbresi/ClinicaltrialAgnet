@@ -56,6 +56,17 @@ PlanVisualization = Literal[
     "kpi",
 ]
 
+ENTITY_TYPE_TO_FILTER_FIELD: dict[EntityType, str] = {
+    "drug": "drug",
+    "condition": "condition",
+    "sponsor": "sponsor",
+    "country": "country",
+    "phase": "phase",
+    "status": "status",
+    "intervention_type": "intervention_type",
+    "study_type": "study_type",
+}
+
 AggregationOperationName = Literal[
     "count",
     "group_by",
@@ -212,6 +223,59 @@ class ExecutionPlan(BaseModel):
         default=None,
         description="Target node field for network_graph visualizations.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_mixed_comparison_entities(cls, data: object) -> object:
+        """Move shared constraints from entities into filters for comparisons.
+
+        The planner sometimes places drugs, phases, or statuses in entities
+        alongside the values being compared (e.g. drug + US + Europe). Keep
+        only the repeated entity type as comparison arms and promote singletons
+        to filters.
+        """
+        if not isinstance(data, dict) or not data.get("comparison"):
+            return data
+
+        entities = data.get("entities") or []
+        if len(entities) < 2:
+            return data
+
+        type_counts: dict[str, int] = {}
+        for entity in entities:
+            if isinstance(entity, dict):
+                entity_type = entity.get("type")
+                if isinstance(entity_type, str):
+                    type_counts[entity_type] = type_counts.get(entity_type, 0) + 1
+
+        if len(type_counts) <= 1:
+            return data
+
+        paired_types = [entity_type for entity_type, count in type_counts.items() if count >= 2]
+        if paired_types:
+            comparison_type = max(paired_types, key=lambda entity_type: type_counts[entity_type])
+        else:
+            comparison_type = max(type_counts, key=type_counts.get)
+
+        comparison_entities: list[object] = []
+        filters = dict(data.get("filters") or {})
+
+        for entity in entities:
+            if not isinstance(entity, dict):
+                comparison_entities.append(entity)
+                continue
+
+            entity_type = entity.get("type")
+            value = entity.get("value")
+            if entity_type == comparison_type:
+                comparison_entities.append(entity)
+                continue
+
+            filter_field = ENTITY_TYPE_TO_FILTER_FIELD.get(entity_type)
+            if filter_field and value and not filters.get(filter_field):
+                filters[filter_field] = value
+
+        return {**data, "entities": comparison_entities, "filters": filters}
 
     @model_validator(mode="after")
     def validate_comparison_entities(self) -> "ExecutionPlan":

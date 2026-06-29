@@ -24,6 +24,18 @@ GROUP_BY_LABELS: dict[str, str] = {
     "condition": "by Condition",
 }
 
+DIMENSION_LABELS: dict[str, str] = {
+    "year": "Year",
+    "phase": "Phase",
+    "sponsor": "Sponsor",
+    "country": "Country",
+    "status": "Status",
+    "intervention": "Intervention",
+    "enrollment": "Enrollment",
+    "drug": "Drug",
+    "condition": "Condition",
+}
+
 
 def value_field(plan: ExecutionPlan) -> str:
     """Return the primary value field for the plan metric."""
@@ -80,6 +92,13 @@ def build_title(plan: ExecutionPlan) -> str:
         return f"{names} Comparison"
 
     subject = _subject_phrase(plan)
+    if plan.visualization == "network_graph":
+        source = plan.network_source or "source"
+        target = plan.network_target or "target"
+        source_label = DIMENSION_LABELS.get(source, source.replace("_", " ").title())
+        target_label = DIMENSION_LABELS.get(target, target.replace("_", " ").title())
+        return f"{subject}: {source_label} & {target_label}"
+
     if plan.group_by:
         suffix = GROUP_BY_LABELS.get(plan.group_by, f"by {plan.group_by.title()}")
         if plan.metric == "proportion":
@@ -94,7 +113,7 @@ def _subject_phrase(plan: ExecutionPlan) -> str:
     if filters.condition and filters.drug:
         return f"Trials for {filters.drug} in {filters.condition}"
     if filters.condition:
-        return f"{filters.condition} Trials"
+        return f"{filters.condition.title()} Trials"
     if filters.drug:
         return f"Trials for {filters.drug}"
     if filters.sponsor:
