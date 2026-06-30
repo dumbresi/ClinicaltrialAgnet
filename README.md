@@ -537,6 +537,25 @@ Tests specifically guard against: comparison queries issuing one API request per
 - The ClinicalTrials.gov client was adapted from API documentation; field extraction and pagination were adjusted after integration tests exposed real response shapes.
 - Individual aggregation operations and chart builders follow a shared template pattern, with per-type customization where needed (network edge deduplication, map encoding for countries).
 
+## Limitations
+
+I built this to prove out the full pipeline — natural language → execution plan → ClinicalTrials.gov → aggregation → chart spec — so I made deliberate tradeoffs and I'm aware of where they show up:
+
+- **I kept the LLM out of the numbers.** OpenAI only produces the execution plan; every count and edge weight comes from fetched study data. That was a conscious choice to prevent hallucinated trial statistics, but it means the planner gets one shot — if it picks the wrong chart or misses a filter, there's no repair loop yet. The explicit filter fields on the request are how I'd override that today.
+- **I'm trusting ClinicalTrials.gov search as-is.** I translate the plan into API parameters and aggregate everything that comes back. I didn't add a local re-filtering step because I wanted to get the core pipeline working first, but I know fuzzy text matching can pull in studies the user didn't mean.
+- **I paginate fully for accuracy, which doesn't scale gracefully yet.** Broad queries (global KPIs, large network graphs) walk every page. I chose correctness over speed for the assessment, but there's no caching, progress indicator, or "this will fetch 50k studies — continue?" guardrail.
+- **Maps and network graphs are proof-of-concept renderings.** Maps are ranked country bars, not a geo projection — I prioritized a consistent encoding schema the frontend could consume over building a map library integration. Networks show co-occurrence edges as a weighted list, which exercises the aggregation layer but isn't an interactive graph UI.
+- **Grouping has real-world ambiguity.** A trial with multiple phases or countries can appear in more than one bucket; I dedupe by NCT ID within each bucket, but the semantics are "trial touches this value," not "trial belongs exclusively here." I also cap high-cardinality dimensions at top 20 so charts stay readable.
+- **Product features were out of scope.** No auth, query history, export, or background jobs — each request is stateless. Fine for a demo, not for production.
+
+## What I'd improve next
+
+If I kept working on this, I'd prioritize in roughly this order:
+
+1. **Plan quality** — add a validation-and-repair pass after the LLM call, plus deterministic rules for chart type (trend → line, comparison → grouped bar) so the model handles intent and code handles consistency. Follow-up queries that refine the previous plan would be the next step after that. I would make a react-style agent so that agent reasons and takes right actions.
+2. **Performance and safety** — cache ClinicalTrials.gov responses by normalized search params, show pagination progress in the UI, and warn before fetching very large result sets.
+3. **Production hardening** — authentication, rate limiting, and basic observability around plan latency and API call volume.
+
 ## Data source
 
 Study data is retrieved from the [ClinicalTrials.gov Data API v2](https://clinicaltrials.gov/data-api/api). The LLM is used only to produce structured execution plans — it does not provide medical advice or interpret trial results.
