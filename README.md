@@ -502,10 +502,42 @@ Run the full suite:
 pytest
 ```
 
+## Backend development notes
+
+### What was built
+
+The backend is a FastAPI service that turns natural language questions into structured visualization specs. A user sends a query; OpenAI produces an **execution plan** describing analytical intent — what to count, group by, and chart. Downstream code, not the LLM, decides how to search ClinicalTrials.gov, aggregate studies, and build the chart spec. That separation keeps the pipeline generic: new chart types and aggregations are added by registering new operations, not by branching on query text.
+
+Development moved in three stages. First, a working end-to-end path: API route, ClinicalTrials.gov client with full pagination, OpenAI integration, and basic aggregation and visualization. Second, a refactor into the current planner/executor model with registry-based engines so comparison queries, network graphs, and KPIs all share the same pipeline. Third, hardening: validating plans before any API call, normalizing network-graph labels, and tightening how comparison queries map entities to separate API requests.
+
+### Tools used
+
+Python 3.12, FastAPI, Pydantic v2, and httpx form the core. OpenAI (`gpt-4o-mini`) generates structured execution plans from `app/prompts/query_planner.txt`. Study data comes from the [ClinicalTrials.gov Data API v2](https://clinicaltrials.gov/data-api/api). Tests use pytest and pytest-asyncio. Cursor was used as the IDE and for AI-assisted coding during implementation.
+
+### How correctness was validated
+
+Correctness was checked at every layer. Unit tests (70+, fully mocked) exercise the query builder, plan validator, aggregation operations, visualization builders, HTTP clients, models, and API routes — runnable with `pytest -m "not integration"`. A smaller set of integration tests hits the live ClinicalTrials.gov API to verify pagination, search parameters, and response parsing. Pipeline tests run the full orchestration path with the LLM and external API mocked. Manual checks through Swagger UI and the `curl` examples in this README confirmed comparison and multi-entity queries against real result counts.
+
+Tests specifically guard against: comparison queries issuing one API request per entity (not repeating every entity on each request), rejection of off-topic questions, warnings when a location looks like a region rather than a country, and inflation of counts from duplicate NCT IDs or unnormalized graph node labels.
+
+### Deliberate design vs generated and adapted
+
+**Deliberate design choices** shaped the architecture:
+
+- The **execution plan** is the contract between the LLM and the rest of the system. It captures intent, entities, filters, metric, group_by, and visualization — never raw API parameters.
+- **QueryBuilder** translates plans into ClinicalTrials.gov v2 query syntax, including `AREA[...]` advanced filters for phase, enrollment, and date ranges.
+- **Registry-based engines** derive aggregation pipelines and chart specs at runtime from the plan, using pluggable operations (`group_by`, `proportion`, `top_n`, `network_edges`, etc.) and one builder per chart type.
+- **Multi-request comparisons** issue a separate paginated search per compared entity, tag results with series labels, and merge them for grouped or stacked charts.
+- **PlanValidator** rejects plans with no actionable search criteria and warns on ambiguous inputs (e.g. "Europe" instead of a specific country).
+
+**Generated and adapted** pieces were bootstrapped quickly and refined through testing:
+
+- The initial FastAPI layout, dependency injection, config, and logging were scaffolded with AI assistance, then reorganized when the monolithic services were split into the registry pattern.
+- The query planner prompt was drafted with AI help and tightened over several iterations as edge cases surfaced (off-topic queries, comparison entity placement, region-like locations).
+- The ClinicalTrials.gov client was adapted from API documentation; field extraction and pagination were adjusted after integration tests exposed real response shapes.
+- Individual aggregation operations and chart builders follow a shared template pattern, with per-type customization where needed (network edge deduplication, map encoding for countries).
+
 ## Data source
 
 Study data is retrieved from the [ClinicalTrials.gov Data API v2](https://clinicaltrials.gov/data-api/api). The LLM is used only to produce structured execution plans — it does not provide medical advice or interpret trial results.
 
-## License
-
-See repository license file.
