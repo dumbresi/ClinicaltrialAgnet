@@ -48,6 +48,7 @@ class VisualizationEngine:
         *,
         api_calls: int,
         studies_processed: int,
+        plan_notes: list[str] | None = None,
     ) -> VisualizationResponse:
         """Build the full API response including enriched metadata."""
         visualization = self.build_spec(plan, aggregated)
@@ -58,6 +59,9 @@ class VisualizationEngine:
         if plan.comparison:
             filters["comparison"] = True
 
+        notes = list(plan_notes or [])
+        notes.extend(aggregated.notes)
+
         meta = MetaData(
             query_plan=plan.model_dump(exclude_none=True),
             filters=filters,
@@ -66,7 +70,7 @@ class VisualizationEngine:
             records_after_filter=aggregated.record_count,
             aggregation=plan.aggregation_label(),
             generated_at=datetime.now(UTC).isoformat(),
-            notes=list(aggregated.notes),
+            notes=notes,
         )
         return VisualizationResponse(visualization=visualization, meta=meta)
 

@@ -13,6 +13,10 @@ class InvalidOpenAIResponseError(OpenAIServiceError):
     """Raised when OpenAI returns an empty or unparseable structured response."""
 
 
+class InvalidExecutionPlanError(OpenAIServiceError):
+    """Raised when the planner output lacks actionable clinical trial search criteria."""
+
+
 class OpenAITimeoutError(OpenAIServiceError):
     """Raised when an OpenAI request times out."""
 

@@ -2,7 +2,7 @@
 
 from app.models.aggregation import AggregatedData, AggregationOptions
 from app.models.execution_plan import ExecutionPlan, PlanEntity, PlanFilters
-from app.models.llm import GroupBy, Metric, SearchIntent, StudyStatus, VisualizationHint
+from app.models.llm import StudyStatus
 from app.models.request import UserQuery
 from app.models.response import (
     EncodingChannel,
@@ -18,16 +18,12 @@ __all__ = [
     "AggregationOptions",
     "EncodingChannel",
     "ExecutionPlan",
-    "GroupBy",
     "MetaData",
-    "Metric",
     "PlanEntity",
     "PlanFilters",
-    "SearchIntent",
     "StudyStatus",
     "UserQuery",
     "VisualizationEncoding",
-    "VisualizationHint",
     "VisualizationResponse",
     "VisualizationSpec",
     "VisualizationType",

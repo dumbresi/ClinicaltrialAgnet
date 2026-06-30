@@ -97,7 +97,7 @@ async def test_pipeline_comparison_by_phase(sample_studies):
 def _build_service(studies: list, plan: ExecutionPlan, *, comparison: bool = False) -> QueryService:
     planner_service = AsyncMock(spec=QueryPlannerService)
     clinical_trials_service = AsyncMock(spec=ClinicalTrialsService)
-    planner_service.create_execution_plan.return_value = plan
+    planner_service.create_execution_plan.return_value = (plan, [])
 
     if comparison:
         half = max(1, len(studies) // 2)

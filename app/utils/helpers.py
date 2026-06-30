@@ -4,13 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from typing import TYPE_CHECKING
-
 from app.models.request import UserQuery
-
-if TYPE_CHECKING:
-    from app.models.execution_plan import ExecutionPlan
-    from app.models.llm import SearchIntent
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -54,11 +48,6 @@ def build_planner_user_message(user_query: UserQuery) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
-def build_intent_user_message(user_query: UserQuery) -> str:
-    """Backward-compatible alias for the planner user message."""
-    return build_planner_user_message(user_query)
-
-
 def merge_explicit_filters_into_plan(
     plan: "ExecutionPlan",
     user_query: UserQuery,
@@ -88,31 +77,6 @@ def merge_explicit_filters_into_plan(
 
     merged_filters = plan.filters.model_copy(update=filter_updates)
     return plan.model_copy(update={"filters": merged_filters})
-
-
-def merge_explicit_filters(intent: "SearchIntent", user_query: UserQuery) -> "SearchIntent":
-    """Backward-compatible filter merge for legacy SearchIntent."""
-    updates: dict[str, object] = {}
-
-    if user_query.drug_name is not None:
-        updates["drug"] = user_query.drug_name
-    if user_query.condition is not None:
-        updates["condition"] = user_query.condition
-    if user_query.trial_phase is not None:
-        updates["phase"] = user_query.trial_phase
-    if user_query.sponsor is not None:
-        updates["sponsor"] = user_query.sponsor
-    if user_query.country is not None:
-        updates["country"] = user_query.country
-    if user_query.start_year is not None:
-        updates["start_year"] = user_query.start_year
-    if user_query.end_year is not None:
-        updates["end_year"] = user_query.end_year
-
-    if not updates:
-        return intent
-
-    return intent.model_copy(update=updates)
 
 
 def normalize_phase_token(phase: str) -> str | None:

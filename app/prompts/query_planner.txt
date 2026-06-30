@@ -9,6 +9,7 @@ CRITICAL RULES:
 4. Output STRICT JSON matching the provided schema exactly.
 5. Do NOT generate ClinicalTrials.gov API parameters — only describe the analytical intent.
 6. Support multiple entities. Never assume only one drug, condition, sponsor, or country exists.
+7. ALWAYS extract search terms from the query into filters or entities. Never leave both empty unless the query is an intentional global summary or network relationship analysis (see below).
 
 EXECUTION PLAN FIELDS:
 
@@ -23,10 +24,11 @@ intent — choose one:
 entities — list of entities being compared or highlighted:
 - Each entity: {"type": "<type>", "value": "<value>", "label": "<optional display label>"}
 - Supported types: drug, condition, sponsor, country, phase, status, intervention_type, study_type
-- For comparisons, include ONLY the values being compared (e.g. both Pembrolizumab AND Nivolumab, or US AND Europe)
+- For comparisons, include ONLY the values being compared (e.g. both Pembrolizumab AND Nivolumab, or US AND Canada)
 - Put shared constraints (drug, phase, status, sponsor, etc.) in filters, NOT in entities
 - All comparison entities MUST share the same type
 - For single queries, entities may be empty if filters capture the search terms
+- Prefer specific country names (e.g. "United States", "Germany") over regions (e.g. "Europe")
 
 filters — shared constraints applied to every API request:
 - condition, drug, phase, sponsor, status, country, intervention_type, study_type
@@ -61,16 +63,19 @@ network_source / network_target — for relationship queries, the node fields (e
 
 INTERPRETATION GUIDANCE:
 - "Compare X and Y by phase" → intent=comparison, entities=[X, Y], group_by=phase, visualization=grouped_bar_chart, comparison=true
-- "Compare recruiting Phase 3 Pembrolizumab trials in the US and Europe" → filters={drug: Pembrolizumab, phase: Phase 3, status: RECRUITING}, entities=[{type: country, value: US}, {type: country, value: Europe}], comparison=true, visualization=grouped_bar_chart or kpi
+- "Compare recruiting Phase 3 Pembrolizumab trials in the US and Canada" → filters={drug: Pembrolizumab, phase: Phase 3, status: RECRUITING}, entities=[{type: country, value: United States}, {type: country, value: Canada}], comparison=true, visualization=grouped_bar_chart
 - "Compare breast cancer and lung cancer sponsors" → entities are conditions, group_by=sponsor, comparison=true
 - "Compare US vs Canada" → entities are countries, comparison=true
 - "Compare Phase 2 vs Phase 3" → entities are phases, comparison=true
-- "changed over time", "trend" → group_by=year, visualization=line_chart, intent=trend
+- "changed over time", "trend" → group_by=year, visualization=line_chart, intent=trend (and put condition/drug/etc. in filters)
 - "by country" or "geographic" → group_by=country, visualization=map
-- "how many" with no breakdown → group_by=null, visualization=kpi, intent=summary
+- "how many trials total" or "how many clinical trials" with no specific topic → intent=summary, group_by=null, visualization=kpi, metric=trial_count
 - "relationship between drugs and sponsors" → intent=relationship, visualization=network_graph, network_source=intervention, network_target=sponsor
 - If explicit_filters are provided in the input, treat them as authoritative for filters but still infer intent, metric, group_by, visualization, and entities from the query text.
 - Put search terms in filters for single-entity queries.
 - For comparisons, put ONLY the compared values in entities; put everything else in filters.
 
-When the query is unrelated to clinical trial search, return a valid plan with empty entities, empty filters, metric=trial_count, group_by=year, visualization=line_chart, intent=trend, comparison=false.
+OFF-TOPIC QUERIES:
+- If the query is unrelated to clinical trial search (weather, general knowledge, medical advice), still return valid JSON but extract any plausible clinical trial terms if present.
+- Do NOT return a generic empty plan with intent=trend and group_by=year when no clinical trial topic exists.
+- When the query mentions a condition, drug, sponsor, phase, status, or country, that term MUST appear in filters or entities.

@@ -29,6 +29,7 @@ class VisualizationService:
         *,
         api_calls: int = 1,
         studies_processed: int = 0,
+        plan_notes: list[str] | None = None,
     ) -> VisualizationResponse:
         """Build the full API response including metadata."""
         return self._engine.build_response(
@@ -36,4 +37,5 @@ class VisualizationService:
             aggregated,
             api_calls=api_calls,
             studies_processed=studies_processed,
+            plan_notes=plan_notes,
         )

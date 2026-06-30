@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.exceptions import InvalidExecutionPlanError
 from app.models.execution_plan import EntityType, ExecutionPlan, PlanEntity, PlanFilters
 from app.utils.helpers import normalize_phase_token
 
@@ -64,7 +65,12 @@ class QueryBuilder:
             self._apply_entity(params, entity)
 
         if not _has_search_criteria(params):
-            params["query.term"] = "clinical trial"
+            if plan.allows_unscoped_search():
+                params["query.term"] = "clinical trial"
+            else:
+                raise InvalidExecutionPlanError(
+                    "Could not identify clinical trial search criteria in the execution plan."
+                )
 
         label = plan.entities[0].display_label if plan.entities else "all"
         return QueryBuildResult(
@@ -86,7 +92,12 @@ class QueryBuilder:
         params = self._build_params(filters)
         self._apply_entity(params, entity)
         if not _has_search_criteria(params):
-            params["query.term"] = "clinical trial"
+            if plan.allows_unscoped_search():
+                params["query.term"] = "clinical trial"
+            else:
+                raise InvalidExecutionPlanError(
+                    "Could not identify clinical trial search criteria in the execution plan."
+                )
         return ApiRequestSpec(
             label=entity.display_label,
             entity_type=entity.type,

@@ -36,7 +36,7 @@ def query_service(
     aggregation_service = AggregationService()
     visualization_service = VisualizationService()
 
-    planner_service.create_execution_plan.return_value = sample_plan
+    planner_service.create_execution_plan.return_value = (sample_plan, [])
     clinical_trials_service.fetch_studies.return_value = MultiSearchResult(
         results=[
             StudiesSearchResult(

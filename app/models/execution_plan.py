@@ -301,3 +301,24 @@ class ExecutionPlan(BaseModel):
         if self.group_by:
             parts.append(f"by_{self.group_by}")
         return "_".join(parts)
+
+    def has_search_criteria(self) -> bool:
+        """Return True when the plan specifies filters or entity search terms."""
+        if self.filters.active_filters():
+            return True
+        return bool(self.entities)
+
+    def allows_unscoped_search(self) -> bool:
+        """Return True when a broad ClinicalTrials.gov search is intentional."""
+        if self.intent == "relationship" or self.visualization == "network_graph":
+            return True
+        return (
+            self.intent == "summary"
+            and self.visualization == "kpi"
+            and self.group_by is None
+            and not self.comparison
+        )
+
+    def is_actionable(self) -> bool:
+        """Return True when the plan can be translated into API requests."""
+        return self.has_search_criteria() or self.allows_unscoped_search()

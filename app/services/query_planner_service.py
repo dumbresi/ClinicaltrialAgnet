@@ -4,6 +4,7 @@ from app.clients.openai_client import OpenAIClientProtocol
 from app.core.logging import get_logger, log_context
 from app.models.execution_plan import ExecutionPlan
 from app.models.request import UserQuery
+from app.services.plan_validator import collect_plan_warnings, validate_execution_plan
 from app.utils.helpers import (
     build_planner_user_message,
     load_prompt,
@@ -26,7 +27,10 @@ class QueryPlannerService:
         self._openai_client = openai_client
         self._instructions = instructions or load_prompt(PROMPT_FILENAME)
 
-    async def create_execution_plan(self, user_query: UserQuery) -> ExecutionPlan:
+    async def create_execution_plan(
+        self,
+        user_query: UserQuery,
+    ) -> tuple[ExecutionPlan, list[str]]:
         """Parse a user query into a merged, validated execution plan."""
         log_context(
             logger,
@@ -41,6 +45,8 @@ class QueryPlannerService:
             user_message=user_message,
         )
         plan = merge_explicit_filters_into_plan(plan, user_query)
+        validate_execution_plan(plan, query_text=user_query.query)
+        warnings = collect_plan_warnings(plan)
 
         log_context(
             logger,
@@ -49,5 +55,6 @@ class QueryPlannerService:
             intent=plan.intent,
             comparison=plan.comparison,
             entity_count=len(plan.entities),
+            warning_count=len(warnings),
         )
-        return plan
+        return plan, warnings

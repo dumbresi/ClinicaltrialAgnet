@@ -30,7 +30,7 @@ class QueryService:
         """Convert a user query into a visualization specification response."""
         log_context(logger, "Processing query", query=user_query.query)
 
-        plan = await self._query_planner_service.create_execution_plan(user_query)
+        plan, plan_warnings = await self._query_planner_service.create_execution_plan(user_query)
         search_result = await self._clinical_trials_service.fetch_studies(plan)
         tagged_studies = self._clinical_trials_service.tag_studies(search_result, plan)
         aggregated = self._aggregation_service.aggregate(tagged_studies, plan)
@@ -39,6 +39,7 @@ class QueryService:
             plan,
             api_calls=search_result.api_calls,
             studies_processed=search_result.studies_processed,
+            plan_notes=plan_warnings,
         )
 
         log_context(

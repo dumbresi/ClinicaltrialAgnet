@@ -6,7 +6,7 @@ import pytest
 from openai import APITimeoutError
 
 from app.clients.openai_client import OpenAIClient
-from app.core.exceptions import InvalidOpenAIResponseError, OpenAITimeoutError
+from app.core.exceptions import InvalidOpenAIResponseError, InvalidExecutionPlanError, OpenAITimeoutError
 from app.core.config import Settings
 from app.models.execution_plan import ExecutionPlan, PlanFilters
 from app.models.request import UserQuery
@@ -82,11 +82,29 @@ async def test_query_planner_service(sample_plan):
         query="How has the number of breast cancer trials changed over time?"
     )
 
-    plan = await service.create_execution_plan(user_query)
+    plan, warnings = await service.create_execution_plan(user_query)
 
     assert plan.filters.condition == "Breast Cancer"
     assert plan.group_by == "year"
+    assert warnings == []
     mock_client.parse_execution_plan.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_query_planner_rejects_off_topic_summary_kpi(settings):
+    off_topic_plan = ExecutionPlan(
+        intent="summary",
+        visualization="kpi",
+        metric="trial_count",
+    )
+    mock_client = AsyncMock()
+    mock_client.parse_execution_plan.return_value = (off_topic_plan, 50.0)
+
+    service = QueryPlannerService(openai_client=mock_client, instructions="test")
+    user_query = UserQuery(query="What is the weather?")
+
+    with pytest.raises(InvalidExecutionPlanError):
+        await service.create_execution_plan(user_query)
 
 
 @pytest.mark.asyncio

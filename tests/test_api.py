@@ -9,6 +9,7 @@ from app.api.deps import get_query_service
 from app.core.exceptions import (
     ClinicalTrialsAPIError,
     ClinicalTrialsTimeoutError,
+    InvalidExecutionPlanError,
     InvalidOpenAIResponseError,
     InvalidVisualizationError,
     NoStudiesFoundError,
@@ -162,6 +163,20 @@ def test_query_invalid_visualization_returns_400(test_client, mock_query_service
     )
 
     assert response.status_code == 400
+
+
+def test_query_invalid_execution_plan_returns_422(test_client, mock_query_service):
+    mock_query_service.process_query.side_effect = InvalidExecutionPlanError(
+        "Could not identify clinical trial search criteria in the query."
+    )
+
+    response = test_client.post(
+        "/query",
+        json={"query": "What is the weather today?"},
+    )
+
+    assert response.status_code == 422
+    assert "search criteria" in response.json()["detail"]
 
 
 def test_query_rejects_unknown_fields(test_client):

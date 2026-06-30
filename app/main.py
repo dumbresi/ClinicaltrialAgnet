@@ -13,6 +13,7 @@ from app.core.exceptions import (
     AppError,
     ClinicalTrialsAPIError,
     ClinicalTrialsTimeoutError,
+    InvalidExecutionPlanError,
     InvalidOpenAIResponseError,
     InvalidVisualizationError,
     NoStudiesFoundError,
@@ -72,6 +73,16 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidExecutionPlanError)
+    async def invalid_execution_plan_handler(
+        request: Request,
+        exc: InvalidExecutionPlanError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={"detail": str(exc)},
         )
 
