@@ -5,7 +5,7 @@ const EXAMPLE_QUERIES = [
   'How has the number of breast cancer trials changed over time?',
   'Compare Pembrolizumab and Nivolumab clinical trials by phase',
   'How many recruiting oncology trials are there by country?',
-  'What is the distribution of trial phases for diabetes studies?',
+  'Show the relationship between interventions and sponsors in breast cancer trials',
 ]
 
 interface QueryFormProps {

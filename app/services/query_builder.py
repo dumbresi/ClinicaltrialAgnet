@@ -55,7 +55,7 @@ class QueryBuilder:
         """Return API request specs for the given execution plan."""
         if plan.comparison and len(plan.entities) >= 2:
             requests = [
-                self._build_entity_request(plan.filters, entity)
+                self._build_entity_request(plan, entity)
                 for entity in plan.entities
             ]
             return QueryBuildResult(requests=requests)
@@ -64,13 +64,7 @@ class QueryBuilder:
         for entity in plan.entities:
             self._apply_entity(params, entity)
 
-        if not _has_search_criteria(params):
-            if plan.allows_unscoped_search():
-                params["query.term"] = "clinical trial"
-            else:
-                raise InvalidExecutionPlanError(
-                    "Could not identify clinical trial search criteria in the execution plan."
-                )
+        self._ensure_search_criteria(plan, params)
 
         label = plan.entities[0].display_label if plan.entities else "all"
         return QueryBuildResult(
@@ -86,23 +80,32 @@ class QueryBuilder:
 
     def _build_entity_request(
         self,
-        filters: PlanFilters,
+        plan: ExecutionPlan,
         entity: PlanEntity,
     ) -> ApiRequestSpec:
-        params = self._build_params(filters)
+        params = self._build_params(plan.filters)
         self._apply_entity(params, entity)
-        if not _has_search_criteria(params):
-            if plan.allows_unscoped_search():
-                params["query.term"] = "clinical trial"
-            else:
-                raise InvalidExecutionPlanError(
-                    "Could not identify clinical trial search criteria in the execution plan."
-                )
+        self._ensure_search_criteria(plan, params)
         return ApiRequestSpec(
             label=entity.display_label,
             entity_type=entity.type,
             entity_value=entity.value,
             params=params,
+        )
+
+    def _ensure_search_criteria(
+        self,
+        plan: ExecutionPlan,
+        params: dict[str, str | int],
+    ) -> None:
+        """Add a broad search term or reject plans with no API criteria."""
+        if _has_search_criteria(params):
+            return
+        if plan.allows_unscoped_search():
+            params["query.term"] = "clinical trial"
+            return
+        raise InvalidExecutionPlanError(
+            "Could not identify clinical trial search criteria in the execution plan."
         )
 
     def _build_params(self, filters: PlanFilters) -> dict[str, str | int]:

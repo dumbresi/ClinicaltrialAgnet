@@ -161,13 +161,23 @@ curl -X POST http://localhost:8000/query \
   }'
 ```
 
-Comparison query:
+Comparison query (issues one ClinicalTrials.gov request per entity, then merges results as separate chart series):
 
 ```bash
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "Compare Pembrolizumab and Nivolumab clinical trials by phase"
+    "query": "Compare recruiting Phase 3 Pembrolizumab trials in the United States and Canada by status"
+  }'
+```
+
+Network graph (co-occurrence edges between interventions and sponsors, counted by unique NCT ID):
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Show the relationship between interventions and sponsors in breast cancer trials"
   }'
 ```
 
@@ -216,40 +226,113 @@ curl -X POST http://localhost:8000/query \
 
 #### Example response (comparison / grouped bar)
 
+Comparison queries run **one API request per entity** (e.g. United States vs Canada), tag each study with its series label, then aggregate into a grouped chart. The `series` encoding tells the frontend which field distinguishes the compared arms.
+
 ```json
 {
   "visualization": {
     "type": "grouped_bar_chart",
-    "title": "Pembrolizumab vs Nivolumab Trials by Phase",
+    "title": "Pembrolizumab Trials by Status: United States vs Canada",
     "encoding": {
-      "x": { "field": "phase", "type": "nominal" },
+      "x": { "field": "status", "label": "Status", "type": "nominal" },
       "y": { "field": "trial_count", "label": "Trial Count", "type": "quantitative" },
-      "series": { "field": "drug", "type": "nominal" }
+      "series": { "field": "country", "label": "Country", "type": "nominal" }
     },
     "data": [
-      { "drug": "Pembrolizumab", "phase": "Phase 1", "trial_count": 120 },
-      { "drug": "Nivolumab", "phase": "Phase 1", "trial_count": 95 },
-      { "drug": "Pembrolizumab", "phase": "Phase 2", "trial_count": 78 },
-      { "drug": "Nivolumab", "phase": "Phase 2", "trial_count": 64 }
+      { "country": "United States", "status": "Recruiting", "trial_count": 48 },
+      { "country": "Canada", "status": "Recruiting", "trial_count": 12 },
+      { "country": "United States", "status": "Completed", "trial_count": 31 },
+      { "country": "Canada", "status": "Completed", "trial_count": 9 }
     ]
   },
   "meta": {
     "query_plan": {
       "intent": "comparison",
       "entities": [
-        { "type": "drug", "value": "Pembrolizumab" },
-        { "type": "drug", "value": "Nivolumab" }
+        { "type": "country", "value": "United States" },
+        { "type": "country", "value": "Canada" }
       ],
+      "filters": {
+        "drug": "Pembrolizumab",
+        "phase": "Phase 3",
+        "status": "RECRUITING"
+      },
       "metric": "trial_count",
-      "group_by": "phase",
+      "group_by": "status",
       "visualization": "grouped_bar_chart",
       "comparison": true
     },
-    "filters": { "group_by": "phase", "metric": "trial_count", "comparison": true },
+    "filters": {
+      "drug": "Pembrolizumab",
+      "phase": "Phase 3",
+      "status": "RECRUITING",
+      "group_by": "status",
+      "metric": "trial_count",
+      "comparison": true
+    },
     "api_calls": 2,
-    "studies_processed": 4200,
-    "records_after_filter": 357,
-    "aggregation": "trial_count_by_drug_by_phase",
+    "studies_processed": 186,
+    "records_after_filter": 100,
+    "aggregation": "trial_count_by_country_by_status",
+    "generated_at": "2026-06-29T12:00:00+00:00",
+    "source": "ClinicalTrials.gov",
+    "notes": []
+  }
+}
+```
+
+#### Example response (network graph)
+
+Relationship queries build **co-occurrence edges** between two dimensions (e.g. intervention ↔ sponsor). Each edge weight is the number of unique trials where both values appear. The frontend renders nodes and weighted links from `source`, `target`, and `trial_count`.
+
+```json
+{
+  "visualization": {
+    "type": "network_graph",
+    "title": "Intervention–Sponsor Relationships in Breast Cancer Trials",
+    "encoding": {
+      "source": { "field": "source", "label": "Intervention", "type": "nominal" },
+      "target": { "field": "target", "label": "Sponsor", "type": "nominal" },
+      "value": { "field": "trial_count", "label": "Trial Count", "type": "quantitative" }
+    },
+    "data": [
+      {
+        "source": "Pembrolizumab",
+        "target": "Merck Sharp & Dohme LLC",
+        "trial_count": 42
+      },
+      {
+        "source": "Trastuzumab",
+        "target": "Genentech, Inc.",
+        "trial_count": 37
+      },
+      {
+        "source": "Pembrolizumab",
+        "target": "National Cancer Institute (NCI)",
+        "trial_count": 18
+      }
+    ]
+  },
+  "meta": {
+    "query_plan": {
+      "intent": "relationship",
+      "entities": [],
+      "filters": { "condition": "Breast Cancer" },
+      "metric": "trial_count",
+      "group_by": null,
+      "visualization": "network_graph",
+      "comparison": false,
+      "network_source": "intervention",
+      "network_target": "sponsor"
+    },
+    "filters": {
+      "condition": "Breast Cancer",
+      "metric": "trial_count"
+    },
+    "api_calls": 1,
+    "studies_processed": 8240,
+    "records_after_filter": 8240,
+    "aggregation": "trial_count",
     "generated_at": "2026-06-29T12:00:00+00:00",
     "source": "ClinicalTrials.gov",
     "notes": []
