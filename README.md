@@ -1,26 +1,48 @@
-# Clinical Trial Visualization API
+# Clinical Trial Explorer
 
-Backend service that converts natural language clinical trial questions into structured visualization specifications backed by [ClinicalTrials.gov](https://clinicaltrials.gov/data-api/api) data.
+Full-stack application that converts natural language clinical trial questions into interactive visualizations backed by [ClinicalTrials.gov](https://clinicaltrials.gov/data-api/api) data.
 
-The API does **not** render charts or answer medical questions. It returns JSON that a frontend can use to render visualizations unambiguously.
+- **Web UI** (`frontend/`) — React app for querying and rendering charts, tables, maps, and more
+- **API** (`app/`) — FastAPI service that plans queries, fetches trial data, aggregates results, and returns structured visualization specs
+
+The API does not answer medical questions. It returns JSON that the frontend (or any client) can render unambiguously.
 
 ## Features
+
+### Query & planning
 
 - **Dynamic query planning** — OpenAI produces an execution plan (intent, entities, filters, metric, group_by, visualization), not raw API parameters
 - **Multi-request search** — comparison queries (e.g. Drug A vs Drug B) issue separate ClinicalTrials.gov requests per entity
 - **Full pagination** — fetches all pages until `nextPageToken` is absent (optional safety cap via env)
+- **Comparison & multi-entity support** — drugs, conditions, sponsors, countries, phases, and more as separate series
+
+### Data processing
+
 - **Registry-based aggregation** — reusable operations (`group_by`, `proportion`, `top_n`, `network_edges`, histograms, etc.) with unique NCT-ID counting
 - **Registry-based visualization** — one builder class per chart type with automatic encoding
-- **Comparison & multi-entity support** — drugs, conditions, sponsors, countries, phases, and more as separate series
+
+### Web UI
+
+- Natural language query input with example prompts
+- Optional structured filters (drug, condition, phase, sponsor, country, year range)
+- Renders all backend visualization types: line, bar, grouped/stacked bar, pie, scatter, table, map, network graph, and KPI
+- Query metadata panel with execution plan and applied filters
+
+### Operations
+
 - Structured logging, typed errors, and dependency injection
+- CORS configured for local frontend development
 
 ## Requirements
 
 - Python 3.12+
+- Node.js 18+ (for the frontend)
 - OpenAI API key
 - Internet access for ClinicalTrials.gov (and OpenAI at runtime)
 
 ## Setup
+
+### Backend
 
 ```bash
 git clone <repository-url>
@@ -49,16 +71,51 @@ CLINICAL_TRIALS_PAGE_SIZE=100
 CLINICAL_TRIALS_MAX_PAGES=50     # omit or leave unset for unlimited pagination
 ```
 
+### Frontend
+
+```bash
+cd frontend
+npm install
+```
+
+For local development, the Vite dev server proxies `/api` to the backend — no frontend `.env` is required. For production builds, set the API URL:
+
+```env
+VITE_API_BASE_URL=https://your-api-host
+```
+
 ## Running locally
+
+Start the backend from the repo root:
 
 ```bash
 source .venv/bin/activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-- API: http://localhost:8000
-- Swagger UI: http://localhost:8000/docs
-- Health check: http://localhost:8000/health
+In a second terminal, start the frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+| Service | URL |
+|---|---|
+| Web app | http://localhost:5173 |
+| API | http://localhost:8000 |
+| Swagger UI | http://localhost:8000/docs |
+| Health check | http://localhost:8000/health |
+
+### Production build (frontend)
+
+```bash
+cd frontend
+npm run build
+npm run preview
+```
+
+See [frontend/README.md](frontend/README.md) for frontend-specific details.
 
 ## API
 
@@ -231,7 +288,7 @@ curl -X POST http://localhost:8000/query \
 The pipeline is fully generic — no hardcoded query-type branches. The LLM describes *what* to analyze; downstream services decide *how*.
 
 ```
-User Prompt
+User Prompt (web UI or API client)
      │
      ▼
 Query Planner              (OpenAI structured output → ExecutionPlan)
@@ -252,7 +309,7 @@ Aggregation Engine         (registry of reusable operations)
 Visualization Engine       (registry of chart builders)
      │
      ▼
-Visualization JSON + meta
+Visualization JSON + meta  → rendered in React (Recharts)
 ```
 
 ### Execution plan
@@ -294,15 +351,15 @@ Studies are counted by unique NCT ID per bucket. Country and intervention groupi
 
 | Add | Where |
 |---|---|
-| New chart type | `app/visualization/builders/` + register in `app/visualization/registry.py` |
+| New chart type | `app/visualization/builders/` + register in `app/visualization/registry.py`; add renderer in `frontend/src/components/VisualizationRenderer.tsx` |
 | New aggregation | `app/aggregation/operations/` + register in `app/aggregation/registry.py` |
 | New filter dimension | `PlanFilters` in `app/models/execution_plan.py` + `app/services/query_builder.py` + planner prompt |
 
 ## Project layout
 
 ```
-app/
-  main.py                       FastAPI entry point
+app/                            FastAPI backend
+  main.py                       Application entry point
   api/                          Routes and dependency injection
   core/                         Config, logging, exceptions
   models/
@@ -315,12 +372,12 @@ app/
     query_builder.py            ExecutionPlan → API request specs
     query_service.py            Pipeline orchestration
     clinical_trials_service.py  Multi-request fetch + tagging
-    aggregation_service.py        Thin wrapper over AggregationEngine
+    aggregation_service.py      Thin wrapper over AggregationEngine
     visualization_service.py    Thin wrapper over VisualizationEngine
   aggregation/
     engine.py                   Pipeline derivation and execution
     registry.py                 Operation registry
-    operations/                 Individual aggregation strategies
+    operations/                   Individual aggregation strategies
   visualization/
     engine.py                   Chart type resolution and spec building
     registry.py                 Builder registry
@@ -328,6 +385,17 @@ app/
   clients/                      OpenAI + ClinicalTrials.gov HTTP clients
   prompts/
     query_planner.txt           LLM query planner instructions
+
+frontend/                       Vite + React web UI
+  src/
+    api/client.ts               API client (/api proxy in dev)
+    components/
+      QueryForm.tsx             Query input and filters
+      VisualizationRenderer.tsx Chart/table/map rendering (Recharts)
+      MetaPanel.tsx             Execution plan and metadata
+      ErrorAlert.tsx            Error display
+    types/api.ts                Shared TypeScript types
+
 tests/                          Unit and integration tests
 ```
 
